@@ -318,6 +318,7 @@ def step_charts(
         "hedge_effect_krd":   g.hedge_effectiveness_plot(krd_plan,   "Key-Rate Hedge Effectiveness"),
         "delta_ladder":       g.delta_ladder_plot(ladder),
         "carry_roll":         g.carry_roll_plot(trades),
+        "obsidian_graph":     g.obsidian_graph(root_dir="."),
     }
 
     # Scenario overlay

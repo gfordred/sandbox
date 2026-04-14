@@ -20,10 +20,13 @@ The dashboard() method writes a self-contained HTML file.
 
 from __future__ import annotations
 
+import ast
 import os
 import textwrap
-from typing import Dict, List, Optional, Tuple, Union
+from pathlib import Path
+from typing import Dict, List, Optional, Set, Tuple, Union
 
+import networkx as nx
 import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
@@ -665,7 +668,253 @@ class Graphify:
         return fig
 
     # ------------------------------------------------------------------
-    # 9. OIS Par Swap Fair-Rate Curve
+    # 9. Obsidian-style Module Dependency Graph
+    # ------------------------------------------------------------------
+
+    def obsidian_graph(
+        self,
+        root_dir: str = ".",
+        title: str = "Module Dependency Graph — Obsidian View",
+        include_external: bool = False,
+    ) -> go.Figure:
+        """
+        Renders a force-directed node-link graph of Python module imports —
+        styled like Obsidian's graph view.
+
+        Parameters
+        ----------
+        root_dir         : root of the project to scan (default: cwd)
+        title            : chart title
+        include_external : if True, add external packages (numpy, ql, …)
+                           as dim satellite nodes; False = project-only
+        """
+        root = Path(root_dir).resolve()
+
+        # ── 1. Collect all .py files as nodes ───────────────────────────
+        py_files: List[Path] = sorted(root.rglob("*.py"))
+        # Drop __pycache__ and hidden dirs
+        py_files = [
+            p for p in py_files
+            if "__pycache__" not in p.parts and not any(
+                part.startswith(".") for part in p.parts
+            )
+        ]
+
+        def _node_id(p: Path) -> str:
+            """Short dotted module name relative to root."""
+            rel = p.relative_to(root)
+            parts = list(rel.with_suffix("").parts)
+            # drop trailing __init__
+            if parts and parts[-1] == "__init__":
+                parts = parts[:-1]
+            return ".".join(parts) if parts else p.stem
+
+        # Map path → node label
+        node_map: Dict[Path, str] = {p: _node_id(p) for p in py_files}
+        all_local: Set[str] = set(node_map.values())
+
+        # ── 2. Parse imports from each file ─────────────────────────────
+        edges: List[Tuple[str, str]] = []
+        external_nodes: Set[str] = set()
+
+        for p, src_id in node_map.items():
+            try:
+                tree = ast.parse(p.read_text(encoding="utf-8"))
+            except SyntaxError:
+                continue
+            for node in ast.walk(tree):
+                if isinstance(node, ast.Import):
+                    for alias in node.names:
+                        top = alias.name.split(".")[0]
+                        if alias.name in all_local:
+                            edges.append((src_id, alias.name))
+                        elif include_external:
+                            external_nodes.add(top)
+                            edges.append((src_id, top))
+                elif isinstance(node, ast.ImportFrom):
+                    if node.module is None:
+                        continue
+                    mod = node.module
+                    # Resolve relative imports
+                    if node.level:
+                        pkg_parts = src_id.split(".")
+                        base = ".".join(pkg_parts[: max(0, len(pkg_parts) - node.level)])
+                        mod = f"{base}.{mod}" if base else mod
+                    # Match longest prefix against known local modules
+                    matched = None
+                    for local in all_local:
+                        if mod == local or mod.startswith(local + "."):
+                            if matched is None or len(local) > len(matched):
+                                matched = local
+                    if matched:
+                        if matched != src_id:
+                            edges.append((src_id, matched))
+                    elif include_external:
+                        top = mod.split(".")[0]
+                        external_nodes.add(top)
+                        edges.append((src_id, top))
+
+        # ── 3. Build NetworkX graph & spring layout ──────────────────────
+        G = nx.DiGraph()
+        for nid in all_local:
+            G.add_node(nid)
+        if include_external:
+            for ext in external_nodes:
+                G.add_node(ext)
+        for src, dst in edges:
+            G.add_edge(src, dst)
+
+        # Remove self-loops
+        G.remove_edges_from(list(nx.selfloop_edges(G)))
+
+        # Spring layout — more iterations = better separation
+        pos = nx.spring_layout(
+            G.to_undirected(),
+            k=3.2 / max(1, G.number_of_nodes() ** 0.5),
+            iterations=120,
+            seed=42,
+        )
+
+        # ── 4. Node metadata ─────────────────────────────────────────────
+        # Colour by top-level package
+        _pkg_colors: Dict[str, str] = {}
+        pkg_palette = [
+            PALETTE["primary"],    # src.charts
+            PALETTE["secondary"],  # src.curves
+            PALETTE["accent"],     # src.instruments
+            "#9B72CF",             # src.risk
+            "#2EC4B6",             # src.hedging
+            "#E07A5F",             # root / main
+            "#81B29A",             # external
+        ]
+        _color_idx = 0
+
+        def _pkg_color(nid: str) -> str:
+            nonlocal _color_idx
+            pkg = nid.split(".")[0] if "." in nid else nid
+            if pkg not in _pkg_colors:
+                _pkg_colors[pkg] = pkg_palette[_color_idx % len(pkg_palette)]
+                _color_idx += 1
+            return _pkg_colors[pkg]
+
+        # Node degree for sizing
+        degree = dict(G.degree())
+        max_deg = max(degree.values()) if degree else 1
+
+        def _node_size(nid: str) -> int:
+            d = degree.get(nid, 0)
+            return int(12 + 24 * (d / max(max_deg, 1)))
+
+        # ── 5. Build Plotly traces ───────────────────────────────────────
+        # --- Edge traces (one thin grey Scatter per edge for hover) -----
+        edge_x, edge_y = [], []
+        for src, dst in G.edges():
+            if src not in pos or dst not in pos:
+                continue
+            x0, y0 = pos[src]
+            x1, y1 = pos[dst]
+            edge_x += [x0, x1, None]
+            edge_y += [y0, y1, None]
+
+        edge_trace = go.Scatter(
+            x=edge_x, y=edge_y,
+            mode="lines",
+            line=dict(width=0.8, color=PALETTE["border_bright"]),
+            hoverinfo="none",
+            showlegend=False,
+            name="edge",
+        )
+
+        # --- One node trace per top-level package (for legend grouping) --
+        pkg_groups: Dict[str, List[str]] = {}
+        for nid in G.nodes():
+            pkg = nid.split(".")[0] if "." in nid else nid
+            pkg_groups.setdefault(pkg, []).append(nid)
+
+        node_traces: List[go.Scatter] = []
+        for pkg, members in sorted(pkg_groups.items()):
+            nx_arr = [pos[m][0] for m in members if m in pos]
+            ny_arr = [pos[m][1] for m in members if m in pos]
+            sizes   = [_node_size(m) for m in members if m in pos]
+            labels  = [m.split(".")[-1] for m in members if m in pos]
+            hover   = [
+                f"<b>{m}</b><br>Degree: {degree.get(m,0)}"
+                for m in members if m in pos
+            ]
+            color = _pkg_color(members[0])
+            is_ext = pkg in external_nodes
+
+            node_traces.append(go.Scatter(
+                x=nx_arr, y=ny_arr,
+                mode="markers+text",
+                name=pkg,
+                text=labels,
+                textposition="top center",
+                textfont=dict(
+                    family=_FONT_MONO,
+                    size=9,
+                    color=PALETTE["text_muted"] if is_ext else PALETTE["text_secondary"],
+                ),
+                hovertext=hover,
+                hoverinfo="text",
+                marker=dict(
+                    size=sizes,
+                    color=color,
+                    opacity=0.55 if is_ext else 0.92,
+                    line=dict(
+                        width=1.5,
+                        color=PALETTE["border_bright"] if is_ext else PALETTE["bg_base"],
+                    ),
+                    symbol="circle",
+                ),
+                legendgroup=pkg,
+                showlegend=True,
+            ))
+
+        # ── 6. Assemble figure ───────────────────────────────────────────
+        fig = go.Figure(data=[edge_trace] + node_traces)
+
+        # Arrow-head annotation for each edge (small triangle)
+        annotations = []
+        for src, dst in G.edges():
+            if src not in pos or dst not in pos:
+                continue
+            x0, y0 = pos[src]
+            x1, y1 = pos[dst]
+            annotations.append(dict(
+                ax=x0, ay=y0,
+                x=x1,  y=y1,
+                xref="x", yref="y",
+                axref="x", ayref="y",
+                showarrow=True,
+                arrowhead=2,
+                arrowsize=1.0,
+                arrowwidth=0.8,
+                arrowcolor=PALETTE["border_bright"],
+            ))
+
+        fig.update_layout(
+            title=dict(
+                text=(
+                    f"{title}"
+                    f"<br><sup style='color:{PALETTE['text_muted']}'>"
+                    f"{G.number_of_nodes()} nodes · "
+                    f"{G.number_of_edges()} edges · "
+                    f"spring layout</sup>"
+                ),
+                font=dict(family=_FONT_SANS, size=14, color=PALETTE["text_accent"]),
+                x=0.0, xanchor="left",
+            ),
+            annotations=annotations,
+            hovermode="closest",
+            **CHART_TEMPLATE,
+        )
+        fig.update_xaxes(showgrid=False, zeroline=False, showticklabels=False)
+        fig.update_yaxes(showgrid=False, zeroline=False, showticklabels=False)
+        return fig
+
+    # ------------------------------------------------------------------
+    # 10. OIS Par Swap Fair-Rate Curve
     # ------------------------------------------------------------------
 
     def fair_rate_curve_plot(
@@ -939,6 +1188,9 @@ class Graphify:
         }
         figs.append(("Curve Scenarios", self.curve_scenario_overlay(curve_builder, scenarios)))
 
+        # Obsidian module graph
+        figs.append(("Module Dependency Graph", self.obsidian_graph(root_dir=".")))
+
         # Section groupings for the dashboard layout
         risk_section    = {"DV01 Bucket Ladder", "Portfolio KRD Heatmap"}
         hedge_section   = {"Hedge Effectiveness", "Key-Rate Hedge Effectiveness",
@@ -946,6 +1198,7 @@ class Graphify:
         pnl_section     = {"Carry & Roll Attribution", "Scenario P&L"}
         ladder_section  = {"IR Delta Ladder"}
         curve_section   = {"Curve Scenarios"}
+        graph_section   = {"Module Dependency Graph"}
 
         current_section = "Curve & Rates"
 
@@ -960,6 +1213,7 @@ class Graphify:
                 "Scenario P&L":             "Stress P&L",
                 "Carry & Roll Attribution": "3M Horizon",
                 "Curve Scenarios":          "Parallel / Twist",
+                "Module Dependency Graph":  "Obsidian View",
             }.get(title, "Analytics")
             html = fig.to_html(full_html=False, include_plotlyjs=False)
             return (
@@ -990,6 +1244,9 @@ class Graphify:
             elif panel_title in curve_section and current_section != "Scenarios":
                 html_parts.append('</div><div class="section-label">Curve Scenarios</div><div class="chart-grid">')
                 current_section = "Scenarios"
+            elif panel_title in graph_section and current_section != "Graph":
+                html_parts.append('</div><div class="section-label">Codebase</div><div class="chart-grid full-width">')
+                current_section = "Graph"
             html_parts.append(_panel(panel_title, fig))
         html_parts.append(self._dashboard_footer())
 
