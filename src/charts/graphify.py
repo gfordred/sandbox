@@ -36,28 +36,72 @@ from src.hedging.hedge_optimizer import HedgePlan
 
 
 # ---------------------------------------------------------------------------
-# Colour palette — inspired by South African flag
+# Bank-grade colour system — South African flag tones, refined
 # ---------------------------------------------------------------------------
 
 PALETTE = {
-    "primary":    "#007A4D",   # SA green
-    "secondary":  "#002395",   # SA blue
-    "accent":     "#FFB612",   # SA gold
-    "danger":     "#DE3831",   # SA red
-    "neutral":    "#FFFFFF",
-    "dark":       "#1A1A2E",
-    "grid":       "#2E3340",
-    "text":       "#E0E0E0",
-    "pos":        "#2ECC71",   # positive values
-    "neg":        "#E74C3C",   # negative values
+    # Brand / SA flag
+    "primary":      "#00A85A",   # SA green — slightly brighter for dark bg
+    "secondary":    "#1A4FBF",   # SA blue — lifted for readability
+    "accent":       "#F5C400",   # SA gold — warm, not harsh
+    "danger":       "#E84040",   # loss red
+    "black":        "#002395",   # deep SA blue (borders, accents)
+    # Surface hierarchy
+    "bg_base":      "#080C14",   # canvas — near-black navy
+    "bg_panel":     "#0D1420",   # chart background
+    "bg_card":      "#111927",   # card / panel surface
+    "bg_header":    "#0A1628",   # header bar
+    "border":       "#1E2D42",   # subtle panel border
+    "border_bright":"#2A3F5F",   # highlighted border
+    # Typography
+    "text_primary": "#E8EDF5",   # primary label — cool white
+    "text_secondary":"#8A9BB5",  # secondary / axis labels
+    "text_muted":   "#4A5A72",   # disabled / minor annotation
+    "text_accent":  "#F5C400",   # callout label (gold)
+    # Semantic
+    "pos":          "#00C875",   # gain / long
+    "neg":          "#E84040",   # loss / short
+    "neutral":      "#6B8ABF",   # flat / zero
+    # Grid
+    "grid_line":    "#162030",   # subtle gridlines
 }
+
+# IBM Plex Mono — the font used across Bloomberg, Refinitiv, institutional terminals.
+# Falls back through JetBrains Mono → Consolas → monospace.
+_FONT_MONO  = "'IBM Plex Mono', 'JetBrains Mono', 'Cascadia Code', 'Consolas', monospace"
+_FONT_SANS  = "'IBM Plex Sans', 'Inter', 'Segoe UI', 'Helvetica Neue', sans-serif"
+_FONT_NUM   = "'IBM Plex Mono', 'Tabular Numbers', 'Consolas', monospace"
 
 CHART_TEMPLATE = dict(
     template="plotly_dark",
-    font=dict(family="Consolas, monospace", size=12, color=PALETTE["text"]),
-    paper_bgcolor=PALETTE["dark"],
-    plot_bgcolor="#16213E",
-    margin=dict(l=60, r=40, t=60, b=60),
+    font=dict(family=_FONT_MONO, size=11, color=PALETTE["text_primary"]),
+    paper_bgcolor=PALETTE["bg_panel"],
+    plot_bgcolor=PALETTE["bg_panel"],
+    margin=dict(l=68, r=32, t=68, b=52),
+    colorway=[
+        PALETTE["primary"], PALETTE["accent"], PALETTE["secondary"],
+        "#9B72CF", "#2EC4B6", "#E07A5F", "#81B29A", "#F2CC8F",
+    ],
+    xaxis=dict(
+        gridcolor=PALETTE["grid_line"],
+        linecolor=PALETTE["border"],
+        tickfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]),
+        title_font=dict(family=_FONT_SANS, size=11, color=PALETTE["text_secondary"]),
+        zeroline=False,
+    ),
+    yaxis=dict(
+        gridcolor=PALETTE["grid_line"],
+        linecolor=PALETTE["border"],
+        tickfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]),
+        title_font=dict(family=_FONT_SANS, size=11, color=PALETTE["text_secondary"]),
+        zeroline=False,
+    ),
+    legend=dict(
+        bgcolor="rgba(8,12,20,0.75)",
+        bordercolor=PALETTE["border_bright"],
+        borderwidth=1,
+        font=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]),
+    ),
 )
 
 TENORS_ORDER = ["1M","2M","3M","6M","9M","1Y","18M","2Y","3Y","4Y","5Y","7Y","10Y","12Y","15Y","20Y"]
@@ -184,15 +228,34 @@ class Graphify:
             ), row=2, col=2)
 
         fig.update_layout(
-            title=dict(text=title, font=dict(size=16, color=PALETTE["accent"])),
+            title=dict(
+                text=title,
+                font=dict(family=_FONT_SANS, size=15, color=PALETTE["text_accent"]),
+                x=0.0, xanchor="left", pad=dict(l=4),
+            ),
             showlegend=True,
-            legend=dict(bgcolor="rgba(0,0,0,0.4)", bordercolor="#444"),
             **CHART_TEMPLATE,
         )
+        # Uniform axis styling across all subplots
+        for row in (1, 2):
+            for col in (1, 2):
+                fig.update_xaxes(
+                    gridcolor=PALETTE["grid_line"], linecolor=PALETTE["border"],
+                    tickfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]),
+                    row=row, col=col,
+                )
+                fig.update_yaxes(
+                    gridcolor=PALETTE["grid_line"], linecolor=PALETTE["border"],
+                    tickfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]),
+                    row=row, col=col,
+                )
         fig.update_yaxes(ticksuffix="%", row=1, col=1)
         fig.update_yaxes(ticksuffix="%", row=1, col=2)
-        fig.update_yaxes(tickformat=".4f", row=2, col=1)
+        fig.update_yaxes(tickformat=".5f", row=2, col=1)
         fig.update_yaxes(ticksuffix="%", row=2, col=2)
+        # Subplot title font
+        for ann in fig.layout.annotations:
+            ann.font = dict(family=_FONT_SANS, size=11, color=PALETTE["text_secondary"])
 
         return fig
 
@@ -226,16 +289,22 @@ class Graphify:
             y=df["tenor"],
             orientation="h",
             marker_color=colors,
-            text=[f"ZAR {v:>+,.0f}" for v in df["krd_zar"]],
+            marker_line=dict(width=0),
+            text=[f"{v:>+,.0f}" for v in df["krd_zar"]],
             textposition="outside",
-            hovertemplate="Tenor: %{y}<br>KRD: ZAR %{x:,.0f}<extra></extra>",
+            textfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]),
+            hovertemplate="<b>%{y}</b><br>KRD: ZAR %{x:,.0f}/bp<extra></extra>",
             name="KRD",
         ))
 
-        fig.add_vline(x=0, line_dash="solid", line_color="white", line_width=1)
+        fig.add_vline(x=0, line_dash="solid", line_color=PALETTE["border_bright"], line_width=1)
 
         fig.update_layout(
-            title=dict(text=title, font=dict(size=15, color=PALETTE["accent"])),
+            title=dict(
+                text=title,
+                font=dict(family=_FONT_SANS, size=14, color=PALETTE["text_accent"]),
+                x=0.0, xanchor="left",
+            ),
             xaxis_title="ZAR per +1 bp",
             yaxis_title="Tenor Bucket",
             **CHART_TEMPLATE,
@@ -262,19 +331,26 @@ class Graphify:
             x=df["scenario"],
             y=df["pnl_zar"],
             marker_color=colors,
-            text=[f"ZAR {v:+,.0f}" for v in df["pnl_zar"]],
+            marker_line=dict(width=0),
+            text=[f"{v:+,.0f}" for v in df["pnl_zar"]],
             textposition="outside",
+            textfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_primary"]),
             customdata=df["description"],
             hovertemplate="<b>%{customdata}</b><br>P&L: ZAR %{y:+,.0f}<extra></extra>",
             name="Scenario P&L",
         ))
-        fig.add_hline(y=0, line_color="white", line_width=1)
+        fig.add_hline(y=0, line_color=PALETTE["border_bright"], line_width=1)
         fig.update_layout(
-            title=dict(text=title, font=dict(size=15, color=PALETTE["accent"])),
-            xaxis_title="Scenario",
-            yaxis_title="P&L (ZAR)",
+            title=dict(
+                text=title,
+                font=dict(family=_FONT_SANS, size=14, color=PALETTE["text_accent"]),
+                x=0.0, xanchor="left",
+            ),
             **CHART_TEMPLATE,
         )
+        fig.update_xaxes(title_text="Scenario",
+                         tickfont=dict(family=_FONT_MONO, size=9))
+        fig.update_yaxes(title_text="P&L (ZAR)")
         return fig
 
     # ------------------------------------------------------------------
@@ -303,24 +379,39 @@ class Graphify:
             x=list(df.columns),
             y=list(df.index),
             colorscale=[
-                [0.0, PALETTE["danger"]],
-                [0.5, "#1A1A2E"],
-                [1.0, PALETTE["pos"]],
+                [0.0,  PALETTE["neg"]],
+                [0.42, "#162030"],
+                [0.5,  PALETTE["bg_panel"]],
+                [0.58, "#0D2318"],
+                [1.0,  PALETTE["pos"]],
             ],
             zmid=0,
             zmin=-abs_max,
             zmax=abs_max,
             text=[[f"{v:,.0f}" for v in row] for row in df.values],
             texttemplate="%{text}",
-            colorbar=dict(title="ZAR / bp", tickformat=","),
-            hovertemplate="Trade: %{y}<br>Tenor: %{x}<br>KRD: ZAR %{z:,.0f}<extra></extra>",
+            textfont=dict(family=_FONT_MONO, size=9, color=PALETTE["text_primary"]),
+            colorbar=dict(
+                title=dict(text="ZAR/bp", font=dict(family=_FONT_SANS, size=10, color=PALETTE["text_secondary"])),
+                tickfont=dict(family=_FONT_MONO, size=9, color=PALETTE["text_secondary"]),
+                tickformat=",",
+                outlinewidth=0,
+                thickness=12,
+            ),
+            hovertemplate="Trade: <b>%{y}</b><br>Tenor: <b>%{x}</b><br>KRD: ZAR %{z:,.0f}<extra></extra>",
         ))
         fig.update_layout(
-            title=dict(text=title, font=dict(size=15, color=PALETTE["accent"])),
-            xaxis_title="Tenor Bucket",
-            yaxis_title="Trade ID",
+            title=dict(
+                text=title,
+                font=dict(family=_FONT_SANS, size=14, color=PALETTE["text_accent"]),
+                x=0.0, xanchor="left",
+            ),
             **CHART_TEMPLATE,
         )
+        fig.update_xaxes(title_text="Tenor Bucket",
+                         tickfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]))
+        fig.update_yaxes(title_text="Trade ID",
+                         tickfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]))
         return fig
 
     # ------------------------------------------------------------------
@@ -343,26 +434,37 @@ class Graphify:
         fig.add_trace(go.Bar(
             x=df["tenor"], y=df["pre_hedge_ZAR"],
             name="Pre-Hedge KRD",
-            marker_color=PALETTE["danger"],
-            opacity=0.85,
+            marker_color=PALETTE["neg"],
+            marker_line=dict(width=0),
+            opacity=0.9,
             text=[f"{v:,.0f}" for v in df["pre_hedge_ZAR"]],
             textposition="outside",
+            textfont=dict(family=_FONT_MONO, size=9, color=PALETTE["text_muted"]),
         ))
         fig.add_trace(go.Bar(
             x=df["tenor"], y=df["post_hedge_ZAR"],
             name="Post-Hedge KRD",
             marker_color=PALETTE["pos"],
-            opacity=0.85,
+            marker_line=dict(width=0),
+            opacity=0.9,
             text=[f"{v:,.0f}" for v in df["post_hedge_ZAR"]],
             textposition="outside",
+            textfont=dict(family=_FONT_MONO, size=9, color=PALETTE["text_secondary"]),
         ))
-        fig.add_hline(y=0, line_color="white", line_width=1)
+        fig.add_hline(y=0, line_color=PALETTE["border_bright"], line_width=1)
+        eff_pct = hedge_plan.hedge_effectiveness * 100
+        eff_colour = PALETTE["pos"] if eff_pct >= 80 else PALETTE["accent"]
         fig.update_layout(
             title=dict(
-                text=f"{title}<br><sup>Effectiveness: {hedge_plan.hedge_effectiveness*100:.1f}%  |  "
-                     f"Pre DV01: ZAR {abs(hedge_plan.pre_hedge_bpv):,.0f}  →  "
-                     f"Post DV01: ZAR {abs(hedge_plan.post_hedge_bpv):,.0f}</sup>",
-                font=dict(size=14, color=PALETTE["accent"]),
+                text=(
+                    f"{title}  "
+                    f"<span style='color:{eff_colour}'>{eff_pct:.1f}% effective</span>"
+                    f"<br><sup style='color:{PALETTE['text_muted']}'>"
+                    f"Pre DV01: {abs(hedge_plan.pre_hedge_bpv):,.0f}  →  "
+                    f"Post DV01: {abs(hedge_plan.post_hedge_bpv):,.0f}</sup>"
+                ),
+                font=dict(family=_FONT_SANS, size=13, color=PALETTE["text_primary"]),
+                x=0.0, xanchor="left",
             ),
             barmode="group",
             xaxis_title="Tenor Bucket",
@@ -404,27 +506,37 @@ class Graphify:
         fig = go.Figure()
         fig.add_trace(go.Bar(
             x=df["trade_id"], y=df["carry"],
-            name="Carry (ZAR)",
+            name="Carry",
             marker_color=PALETTE["secondary"],
+            marker_line=dict(width=0),
             text=[f"{v:+,.0f}" for v in df["carry"]],
             textposition="inside",
+            textfont=dict(family=_FONT_MONO, size=9, color=PALETTE["text_primary"]),
         ))
         fig.add_trace(go.Bar(
             x=df["trade_id"], y=df["roll"],
-            name="Roll (ZAR)",
+            name="Roll",
             marker_color=PALETTE["accent"],
+            marker_line=dict(width=0),
             text=[f"{v:+,.0f}" for v in df["roll"]],
             textposition="inside",
+            textfont=dict(family=_FONT_MONO, size=9, color=PALETTE["bg_base"]),
         ))
         fig.add_trace(go.Scatter(
             x=df["trade_id"], y=df["total"],
             mode="markers+text", name="Total C+R",
-            marker=dict(size=12, color=PALETTE["primary"], symbol="star"),
-            text=[f"Σ {v:+,.0f}" for v in df["total"]],
+            marker=dict(size=10, color=PALETTE["primary"], symbol="diamond",
+                        line=dict(color=PALETTE["bg_base"], width=1)),
+            text=[f"{v:+,.0f}" for v in df["total"]],
             textposition="top center",
+            textfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_accent"]),
         ))
         fig.update_layout(
-            title=dict(text=f"{title} ({horizon_months}M)", font=dict(size=15, color=PALETTE["accent"])),
+            title=dict(
+                text=f"{title} ({horizon_months}M)",
+                font=dict(family=_FONT_SANS, size=14, color=PALETTE["text_accent"]),
+                x=0.0, xanchor="left",
+            ),
             barmode="stack",
             xaxis_title="Trade",
             yaxis_title="ZAR",
@@ -450,7 +562,11 @@ class Graphify:
         tenors = _sort_tenors([c for c in ladder_df.columns])
         tenors = [t for t in tenors if t in ladder_df.columns]
 
-        colors = px.colors.qualitative.Pastel
+        # Distinct but harmonious trade colours
+        trade_colors = [
+            "#1A6FBF", "#00A85A", "#9B72CF", "#E07A5F",
+            "#2EC4B6", "#F2CC8F", "#81B29A", "#6A8EAE",
+        ]
         fig = go.Figure()
         for i, trade in enumerate(trades):
             row = ladder_df.loc[trade]
@@ -458,8 +574,10 @@ class Graphify:
                 x=tenors,
                 y=[row.get(t, 0) for t in tenors],
                 name=trade,
-                marker_color=colors[i % len(colors)],
-                opacity=0.8,
+                marker_color=trade_colors[i % len(trade_colors)],
+                marker_line=dict(width=0),
+                opacity=0.88,
+                hovertemplate=f"<b>{trade}</b><br>%{{x}}: ZAR %{{y:,.0f}}<extra></extra>",
             ))
         if net is not None:
             fig.add_trace(go.Scatter(
@@ -467,15 +585,21 @@ class Graphify:
                 y=[net.get(t, 0) for t in tenors],
                 mode="lines+markers+text",
                 name="NET",
-                line=dict(color=PALETTE["accent"], width=3, dash="dash"),
-                marker=dict(size=10, symbol="diamond"),
+                line=dict(color=PALETTE["accent"], width=2.5, dash="dash"),
+                marker=dict(size=9, symbol="diamond",
+                            color=PALETTE["accent"],
+                            line=dict(color=PALETTE["bg_base"], width=1)),
                 text=[f"{net.get(t,0):+,.0f}" for t in tenors],
                 textposition="top center",
-                textfont=dict(color=PALETTE["accent"], size=9),
+                textfont=dict(family=_FONT_MONO, size=9, color=PALETTE["text_accent"]),
             ))
-        fig.add_hline(y=0, line_color="white", line_width=1)
+        fig.add_hline(y=0, line_color=PALETTE["border_bright"], line_width=1)
         fig.update_layout(
-            title=dict(text=title, font=dict(size=15, color=PALETTE["accent"])),
+            title=dict(
+                text=title,
+                font=dict(family=_FONT_SANS, size=14, color=PALETTE["text_accent"]),
+                x=0.0, xanchor="left",
+            ),
             barmode="relative",
             xaxis_title="Tenor Bucket",
             yaxis_title="ZAR / bp",
@@ -506,30 +630,38 @@ class Graphify:
             x=base_df["tenor"], y=base_df["zero_rate_cc"],
             mode="lines+markers", name="Base",
             line=dict(color=PALETTE["primary"], width=3),
-            marker=dict(size=8),
+            marker=dict(size=7, color=PALETTE["primary"],
+                        line=dict(color=PALETTE["bg_base"], width=1)),
+            hovertemplate="Base<br>%{x}: %{y:.4f}%<extra></extra>",
         ))
 
         scene_colors = [
-            PALETTE["danger"], PALETTE["accent"], PALETTE["secondary"],
-            "#9B59B6", "#1ABC9C",
+            PALETTE["neg"], PALETTE["accent"], PALETTE["secondary"],
+            "#9B72CF", "#2EC4B6",
         ]
+        dash_styles = ["dot", "dash", "longdash", "dashdot", "longdashdot"]
         for i, (label, scb) in enumerate(scenarios.items()):
             sdf = scb.curve_dataframe()
             sdf = sdf[sdf["tenor"].isin(tenors)]
             fig.add_trace(go.Scatter(
                 x=sdf["tenor"], y=sdf["zero_rate_cc"],
                 mode="lines+markers", name=label,
-                line=dict(color=scene_colors[i % len(scene_colors)], width=2, dash="dot"),
-                marker=dict(size=6),
+                line=dict(color=scene_colors[i % len(scene_colors)],
+                          width=1.8, dash=dash_styles[i % len(dash_styles)]),
+                marker=dict(size=5),
+                hovertemplate=f"{label}<br>%{{x}}: %{{y:.4f}}%<extra></extra>",
             ))
 
         fig.update_layout(
-            title=dict(text=title, font=dict(size=15, color=PALETTE["accent"])),
-            xaxis_title="Tenor",
-            yaxis_title="Zero Rate (%) Continuous",
-            yaxis_ticksuffix="%",
+            title=dict(
+                text=title,
+                font=dict(family=_FONT_SANS, size=14, color=PALETTE["text_accent"]),
+                x=0.0, xanchor="left",
+            ),
             **CHART_TEMPLATE,
         )
+        fig.update_xaxes(title_text="Tenor")
+        fig.update_yaxes(title_text="Zero Rate (cc, %)", ticksuffix="%")
         return fig
 
     # ------------------------------------------------------------------
@@ -606,12 +738,56 @@ class Graphify:
         }
         figs.append(("Curve Scenarios", self.curve_scenario_overlay(curve_builder, scenarios)))
 
-        # Build HTML
+        # Section groupings for the dashboard layout
+        risk_section    = {"DV01 Bucket Ladder", "Portfolio KRD Heatmap"}
+        hedge_section   = {"Hedge Effectiveness", "Key-Rate Hedge Effectiveness",
+                           "Macro Hedge Effectiveness"}
+        pnl_section     = {"Carry & Roll Attribution", "Scenario P&L"}
+        ladder_section  = {"IR Delta Ladder"}
+        curve_section   = {"Curve Scenarios"}
+
+        current_section = "Curve & Rates"
+
+        def _panel(title: str, fig: go.Figure) -> str:
+            tag = {
+                "ZARONIA Yield Curve":   "Bootstrapped OIS",
+                "DV01 Bucket Ladder":    "KRD per bp",
+                "Portfolio KRD Heatmap": "Trade × Tenor",
+                "IR Delta Ladder":       "01 Grid",
+                "Scenario P&L":          "Stress P&L",
+                "Carry & Roll Attribution": "3M Horizon",
+                "Curve Scenarios":       "Parallel / Twist",
+            }.get(title, "Analytics")
+            html = fig.to_html(full_html=False, include_plotlyjs=False)
+            return (
+                f'<div class="chart-panel">'
+                f'<div class="panel-header">'
+                f'<span class="panel-title">{title}</span>'
+                f'<span class="panel-tag">{tag}</span>'
+                f'</div>'
+                f'<div class="panel-body">{html}</div>'
+                f'</div>'
+            )
+
         html_parts = [self._dashboard_header()]
         for panel_title, fig in figs:
-            html_parts.append(f'<div class="chart-panel"><h2>{panel_title}</h2>')
-            html_parts.append(fig.to_html(full_html=False, include_plotlyjs=False))
-            html_parts.append("</div>")
+            # Inject section dividers
+            if panel_title in risk_section and current_section != "Risk":
+                html_parts.append('</div><div class="section-label">Risk &amp; Greeks</div><div class="chart-grid">')
+                current_section = "Risk"
+            elif panel_title in hedge_section and current_section != "Hedging":
+                html_parts.append('</div><div class="section-label">Hedging</div><div class="chart-grid">')
+                current_section = "Hedging"
+            elif panel_title in pnl_section and current_section != "P&L":
+                html_parts.append('</div><div class="section-label">P&amp;L Attribution</div><div class="chart-grid">')
+                current_section = "P&L"
+            elif panel_title in ladder_section and current_section != "Ladder":
+                html_parts.append('</div><div class="section-label">Delta Ladder</div><div class="chart-grid full-width">')
+                current_section = "Ladder"
+            elif panel_title in curve_section and current_section != "Scenarios":
+                html_parts.append('</div><div class="section-label">Curve Scenarios</div><div class="chart-grid">')
+                current_section = "Scenarios"
+            html_parts.append(_panel(panel_title, fig))
         html_parts.append(self._dashboard_footer())
 
         out_path = os.path.join(self.output_dir, output_file)
@@ -637,9 +813,11 @@ class Graphify:
     def _empty_fig(title: str) -> go.Figure:
         fig = go.Figure()
         fig.update_layout(
-            title=title,
+            title=dict(text=title,
+                       font=dict(family=_FONT_SANS, size=13, color=PALETTE["text_accent"])),
             annotations=[dict(text="No data available", showarrow=False,
-                              font=dict(size=18, color="grey"),
+                              font=dict(family=_FONT_MONO, size=14,
+                                        color=PALETTE["text_muted"]),
                               xref="paper", yref="paper", x=0.5, y=0.5)],
             **CHART_TEMPLATE,
         )
@@ -654,60 +832,229 @@ class Graphify:
           <meta charset="UTF-8">
           <meta name="viewport" content="width=device-width, initial-scale=1.0">
           <title>ZARONIA IRS Desk — Hedging Dashboard</title>
+
+          <!-- Bank-grade fonts: IBM Plex Sans (UI) + IBM Plex Mono (data) -->
+          <link rel="preconnect" href="https://fonts.googleapis.com">
+          <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+          <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+
           <script src="https://cdn.plot.ly/plotly-latest.min.js"></script>
+
           <style>
-            * { box-sizing: border-box; margin: 0; padding: 0; }
+            /* ── Reset ───────────────────────────────────────────────── */
+            *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+            /* ── Tokens ──────────────────────────────────────────────── */
+            :root {
+              --bg-base:       #080C14;
+              --bg-panel:      #0D1420;
+              --bg-card:       #111927;
+              --bg-header:     #0A1628;
+              --border:        #1E2D42;
+              --border-bright: #2A3F5F;
+              --sa-green:      #00A85A;
+              --sa-blue:       #1A4FBF;
+              --sa-gold:       #F5C400;
+              --sa-red:        #E84040;
+              --text-primary:  #E8EDF5;
+              --text-secondary:#8A9BB5;
+              --text-muted:    #4A5A72;
+              --pos:           #00C875;
+              --neg:           #E84040;
+              --font-ui:       'IBM Plex Sans',  'Inter', 'Segoe UI', sans-serif;
+              --font-data:     'IBM Plex Mono', 'JetBrains Mono', 'Consolas', monospace;
+            }
+
+            /* ── Base ────────────────────────────────────────────────── */
+            html { font-size: 14px; -webkit-font-smoothing: antialiased; }
             body {
-              background: #1A1A2E;
-              color: #E0E0E0;
-              font-family: 'Consolas', monospace;
-              padding: 20px;
+              background: var(--bg-base);
+              color: var(--text-primary);
+              font-family: var(--font-ui);
+              line-height: 1.55;
+              padding: 20px 24px 40px;
+              min-height: 100vh;
             }
-            header {
-              background: linear-gradient(135deg, #007A4D, #002395);
-              color: white;
-              padding: 24px 32px;
-              border-radius: 10px;
-              margin-bottom: 24px;
-              border-left: 6px solid #FFB612;
+
+            /* ── Top bar ─────────────────────────────────────────────── */
+            .topbar {
+              display: flex;
+              align-items: center;
+              gap: 0;
+              background: var(--bg-header);
+              border: 1px solid var(--border);
+              border-radius: 6px;
+              margin-bottom: 20px;
+              overflow: hidden;
             }
-            header h1 { font-size: 26px; letter-spacing: 1px; }
-            header p  { font-size: 13px; color: #ccc; margin-top: 6px; }
+            .topbar-flag {
+              display: flex;
+              flex-direction: column;
+              width: 6px;
+              flex-shrink: 0;
+              align-self: stretch;
+            }
+            .topbar-flag span { flex: 1; display: block; }
+            .topbar-body {
+              padding: 16px 24px;
+              flex: 1;
+            }
+            .topbar-title {
+              font-family: var(--font-ui);
+              font-size: 17px;
+              font-weight: 600;
+              letter-spacing: 0.02em;
+              color: var(--text-primary);
+            }
+            .topbar-title em {
+              font-style: normal;
+              color: var(--sa-gold);
+            }
+            .topbar-meta {
+              font-family: var(--font-data);
+              font-size: 10.5px;
+              color: var(--text-muted);
+              margin-top: 4px;
+              letter-spacing: 0.04em;
+            }
+            .topbar-meta span { margin-right: 18px; }
+            .topbar-meta .live {
+              color: var(--sa-green);
+              font-weight: 500;
+            }
+            .topbar-badges {
+              display: flex;
+              flex-direction: column;
+              align-items: flex-end;
+              gap: 6px;
+              padding: 16px 24px;
+              flex-shrink: 0;
+            }
+            .badge {
+              font-family: var(--font-data);
+              font-size: 9.5px;
+              font-weight: 500;
+              letter-spacing: 0.08em;
+              text-transform: uppercase;
+              padding: 3px 8px;
+              border-radius: 3px;
+              border: 1px solid;
+            }
+            .badge-green  { color: var(--sa-green); border-color: var(--sa-green); }
+            .badge-gold   { color: var(--sa-gold);  border-color: var(--sa-gold);  }
+            .badge-blue   { color: var(--sa-blue);  border-color: var(--sa-blue);  }
+
+            /* ── Divider labels ──────────────────────────────────────── */
+            .section-label {
+              font-family: var(--font-data);
+              font-size: 9.5px;
+              font-weight: 500;
+              letter-spacing: 0.15em;
+              text-transform: uppercase;
+              color: var(--text-muted);
+              border-top: 1px solid var(--border);
+              padding-top: 16px;
+              margin: 20px 0 12px;
+            }
+
+            /* ── Chart grid ──────────────────────────────────────────── */
             .chart-grid {
               display: grid;
-              grid-template-columns: repeat(auto-fit, minmax(680px, 1fr));
-              gap: 20px;
+              grid-template-columns: repeat(auto-fit, minmax(700px, 1fr));
+              gap: 16px;
             }
+            .chart-grid.full-width { grid-template-columns: 1fr; }
+
+            /* ── Chart panels ────────────────────────────────────────── */
             .chart-panel {
-              background: #16213E;
-              border-radius: 10px;
-              padding: 16px;
-              border: 1px solid #2E3340;
+              background: var(--bg-card);
+              border: 1px solid var(--border);
+              border-radius: 5px;
+              overflow: hidden;
             }
-            .chart-panel h2 {
-              font-size: 13px;
-              color: #FFB612;
+            .chart-panel:hover {
+              border-color: var(--border-bright);
+              transition: border-color 0.18s ease;
+            }
+            .panel-header {
+              display: flex;
+              align-items: center;
+              justify-content: space-between;
+              padding: 10px 16px;
+              border-bottom: 1px solid var(--border);
+              background: var(--bg-panel);
+            }
+            .panel-title {
+              font-family: var(--font-data);
+              font-size: 10px;
+              font-weight: 500;
+              letter-spacing: 0.12em;
               text-transform: uppercase;
-              letter-spacing: 2px;
-              margin-bottom: 12px;
-              border-bottom: 1px solid #2E3340;
-              padding-bottom: 8px;
+              color: var(--sa-gold);
             }
+            .panel-tag {
+              font-family: var(--font-data);
+              font-size: 9px;
+              letter-spacing: 0.06em;
+              color: var(--text-muted);
+              text-transform: uppercase;
+            }
+            .panel-body { padding: 4px; }
+
+            /* ── Footer ──────────────────────────────────────────────── */
             footer {
-              margin-top: 32px;
-              text-align: center;
-              font-size: 11px;
-              color: #555;
+              margin-top: 36px;
+              padding-top: 16px;
+              border-top: 1px solid var(--border);
+              display: flex;
+              justify-content: space-between;
+              align-items: center;
+            }
+            footer p {
+              font-family: var(--font-data);
+              font-size: 9.5px;
+              color: var(--text-muted);
+              letter-spacing: 0.04em;
+            }
+            footer .mark {
+              font-family: var(--font-data);
+              font-size: 9px;
+              color: var(--text-muted);
+              letter-spacing: 0.1em;
+              text-transform: uppercase;
             }
           </style>
         </head>
         <body>
-          <header>
-            <h1>ZARONIA IRS Desk — Hedging Analytics Dashboard</h1>
-            <p>South African Rand Overnight Index Average &nbsp;|&nbsp;
-               QuantLib 1.42 &nbsp;|&nbsp; PhD-Level Rates Analytics &nbsp;|&nbsp;
-               Development Bank Desk</p>
-          </header>
+
+          <!-- Top bar -->
+          <div class="topbar">
+            <div class="topbar-flag">
+              <span style="background:#007A4D"></span>
+              <span style="background:#FFB612"></span>
+              <span style="background:#002395"></span>
+              <span style="background:#DE3831"></span>
+              <span style="background:#FFFFFF"></span>
+            </div>
+            <div class="topbar-body">
+              <div class="topbar-title">
+                <em>ZARONIA</em> IRS Desk &mdash; Hedging Analytics
+              </div>
+              <div class="topbar-meta">
+                <span>South African Rand Overnight Index Average</span>
+                <span class="live">&#9679; LIVE</span>
+                <span>QuantLib 1.42</span>
+                <span>Development Bank &mdash; Rates Desk</span>
+              </div>
+            </div>
+            <div class="topbar-badges">
+              <span class="badge badge-green">PhD Analytics</span>
+              <span class="badge badge-gold">ZAR Rates</span>
+              <span class="badge badge-blue">OIS / IRS</span>
+            </div>
+          </div>
+
+          <div class="section-label">Curve &amp; Rates</div>
           <div class="chart-grid">
         """)
 
@@ -715,11 +1062,14 @@ class Graphify:
     def _dashboard_footer() -> str:
         return textwrap.dedent("""
           </div>
+
           <footer>
-            ZARONIA Desk Hedging System &copy; 2026 &nbsp;|&nbsp;
-            Built with QuantLib + Plotly &nbsp;|&nbsp;
-            All analytics for institutional use only.
+            <p>ZARONIA Desk Hedging System &copy; 2026 &nbsp;&mdash;&nbsp;
+               Built with QuantLib + Plotly &nbsp;&mdash;&nbsp;
+               Institutional use only.</p>
+            <p class="mark">ZAR &bull; OIS &bull; IRS &bull; KRD &bull; DV01</p>
           </footer>
+
         </body>
         </html>
         """)
