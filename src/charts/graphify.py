@@ -665,7 +665,206 @@ class Graphify:
         return fig
 
     # ------------------------------------------------------------------
-    # 9. NPV / MTM Gauge
+    # 9. OIS Par Swap Fair-Rate Curve
+    # ------------------------------------------------------------------
+
+    def fair_rate_curve_plot(
+        self,
+        curve_builder: ZARCurveBuilder,
+        title: str = "OIS Par Swap Fair-Rate Curve — ZAR",
+    ) -> go.Figure:
+        """
+        Dedicated OIS par swap rate chart — two panels:
+          Top   : implied par swap rates vs market OIS mid quotes
+          Bottom: spread between par swap rate and OIS quote (bps)
+        """
+        tenor_labels = ["1Y", "2Y", "3Y", "4Y", "5Y", "7Y", "10Y", "12Y", "15Y", "20Y"]
+
+        par_rates: dict = {}
+        for t in tenor_labels:
+            try:
+                par_rates[t] = curve_builder.par_swap_rate(t) * 100
+            except Exception:
+                pass
+
+        ois_rates = {
+            k: v * 100
+            for k, v in curve_builder.mkt.ois_quotes.items()
+            if k in tenor_labels
+        }
+
+        common = [t for t in tenor_labels if t in par_rates and t in ois_rates]
+        spread_bps = {t: (par_rates[t] - ois_rates[t]) * 100 for t in common}
+
+        par_df = pd.DataFrame(
+            [(t, par_rates[t]) for t in tenor_labels if t in par_rates],
+            columns=["tenor", "par_rate"],
+        )
+        ois_df = pd.DataFrame(
+            [(t, ois_rates[t]) for t in common],
+            columns=["tenor", "ois_rate"],
+        )
+        spread_df = pd.DataFrame(
+            [(t, spread_bps[t]) for t in common],
+            columns=["tenor", "spread_bps"],
+        )
+
+        fig = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=[
+                "Par Swap Rate vs OIS Mid Quotes",
+                "Spread: Par Swap − OIS Quote (bps)",
+            ],
+            vertical_spacing=0.18,
+            row_heights=[0.65, 0.35],
+        )
+
+        # --- Par swap rates ---
+        fig.add_trace(go.Scatter(
+            x=par_df["tenor"], y=par_df["par_rate"],
+            mode="lines+markers", name="Par Swap Rate",
+            line=dict(color=PALETTE["primary"], width=2.5),
+            marker=dict(size=8, symbol="square", color=PALETTE["primary"],
+                        line=dict(color=PALETTE["bg_base"], width=1)),
+            hovertemplate="Tenor: %{x}<br>Par Rate: %{y:.4f}%<extra></extra>",
+        ), row=1, col=1)
+
+        # --- OIS market mid quotes ---
+        fig.add_trace(go.Scatter(
+            x=ois_df["tenor"], y=ois_df["ois_rate"],
+            mode="markers", name="OIS Mid Quote",
+            marker=dict(size=10, color=PALETTE["accent"], symbol="x",
+                        line=dict(width=2.5, color=PALETTE["accent"])),
+            hovertemplate="Tenor: %{x}<br>OIS Mid: %{y:.4f}%<extra></extra>",
+        ), row=1, col=1)
+
+        # --- Spread bars ---
+        spread_colors = [PALETTE["pos"] if v >= 0 else PALETTE["neg"] for v in spread_df["spread_bps"]]
+        fig.add_trace(go.Bar(
+            x=spread_df["tenor"], y=spread_df["spread_bps"],
+            name="Spread (bps)",
+            marker_color=spread_colors,
+            marker_line=dict(width=0),
+            text=[f"{v:+.1f}" for v in spread_df["spread_bps"]],
+            textposition="outside",
+            textfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]),
+            hovertemplate="Tenor: %{x}<br>Spread: %{y:.2f} bps<extra></extra>",
+        ), row=2, col=1)
+
+        fig.add_hline(y=0, line_color=PALETTE["border_bright"], line_width=1, row=2, col=1)
+
+        fig.update_layout(
+            title=dict(
+                text=title,
+                font=dict(family=_FONT_SANS, size=14, color=PALETTE["text_accent"]),
+                x=0.0, xanchor="left",
+            ),
+            showlegend=True,
+            **CHART_TEMPLATE,
+        )
+        fig.update_yaxes(ticksuffix="%", title_text="Rate (%)", row=1, col=1)
+        fig.update_xaxes(title_text="Tenor", row=2, col=1)
+        fig.update_yaxes(title_text="Spread (bps)", row=2, col=1)
+        for ann in fig.layout.annotations:
+            ann.font = dict(family=_FONT_SANS, size=11, color=PALETTE["text_secondary"])
+
+        return fig
+
+    # ------------------------------------------------------------------
+    # 10. P&L Attribution (NPV + BPV by trade)
+    # ------------------------------------------------------------------
+
+    def pnl_attribution_plot(
+        self,
+        portfolio_risk: "PortfolioRiskReport",
+        title: str = "P&L Attribution — NPV & BPV by Trade",
+    ) -> go.Figure:
+        """
+        Two-panel attribution view:
+          Left  : NPV contribution per trade (horizontal bars)
+          Right : BPV (signed) contribution per trade (horizontal bars)
+
+        Positive BPV ⇒ short duration (pay-fixed); negative BPV ⇒ long duration.
+        """
+        rows_data = [
+            {
+                "trade_id": r.trade_id,
+                "npv_zar":  r.npv_zar,
+                "bpv_zar":  r.bpv_zar,
+            }
+            for r in portfolio_risk.trade_reports
+        ]
+        if not rows_data:
+            return self._empty_fig(title)
+
+        df = pd.DataFrame(rows_data)
+
+        fig = make_subplots(
+            rows=1, cols=2,
+            subplot_titles=[
+                "NPV Contribution (ZAR)",
+                "BPV Contribution (ZAR / bp)",
+            ],
+            horizontal_spacing=0.14,
+        )
+
+        # --- NPV bars ---
+        npv_colors = [PALETTE["pos"] if v >= 0 else PALETTE["neg"] for v in df["npv_zar"]]
+        fig.add_trace(go.Bar(
+            x=df["npv_zar"], y=df["trade_id"],
+            orientation="h",
+            marker_color=npv_colors,
+            marker_line=dict(width=0),
+            text=[f"{v:+,.0f}" for v in df["npv_zar"]],
+            textposition="outside",
+            textfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]),
+            hovertemplate="<b>%{y}</b><br>NPV: ZAR %{x:+,.0f}<extra></extra>",
+            name="NPV",
+        ), row=1, col=1)
+
+        # --- BPV bars (negative BPV = long duration = receiver = "good" in rates terms) ---
+        bpv_colors = [PALETTE["pos"] if v <= 0 else PALETTE["neg"] for v in df["bpv_zar"]]
+        fig.add_trace(go.Bar(
+            x=df["bpv_zar"], y=df["trade_id"],
+            orientation="h",
+            marker_color=bpv_colors,
+            marker_line=dict(width=0),
+            text=[f"{v:+,.0f}" for v in df["bpv_zar"]],
+            textposition="outside",
+            textfont=dict(family=_FONT_MONO, size=10, color=PALETTE["text_secondary"]),
+            hovertemplate="<b>%{y}</b><br>BPV: ZAR %{x:+,.0f}<extra></extra>",
+            name="BPV",
+        ), row=1, col=2)
+
+        for col in (1, 2):
+            fig.add_vline(x=0, line_color=PALETTE["border_bright"], line_width=1, row=1, col=col)
+
+        # Portfolio totals as annotations
+        total_npv = sum(r.npv_zar for r in portfolio_risk.trade_reports)
+        total_bpv = sum(r.bpv_zar for r in portfolio_risk.trade_reports)
+        subtitle = (
+            f"Portfolio: NPV ZAR {total_npv:+,.0f}  |  "
+            f"BPV ZAR {total_bpv:+,.0f} / bp"
+        )
+
+        fig.update_layout(
+            title=dict(
+                text=f"{title}<br><sup style='color:{PALETTE['text_muted']}'>{subtitle}</sup>",
+                font=dict(family=_FONT_SANS, size=13, color=PALETTE["text_accent"]),
+                x=0.0, xanchor="left",
+            ),
+            showlegend=False,
+            **CHART_TEMPLATE,
+        )
+        fig.update_xaxes(title_text="ZAR", row=1, col=1)
+        fig.update_xaxes(title_text="ZAR / bp", row=1, col=2)
+        for ann in fig.layout.annotations:
+            ann.font = dict(family=_FONT_SANS, size=11, color=PALETTE["text_secondary"])
+
+        return fig
+
+    # ------------------------------------------------------------------
+    # 11. NPV / MTM Gauge
     # ------------------------------------------------------------------
 
     def mtm_gauge(
@@ -713,8 +912,10 @@ class Graphify:
         """
         figs: List[Tuple[str, go.Figure]] = [
             ("ZARONIA Yield Curve",          self.yield_curve_plot(curve_builder)),
+            ("OIS Fair-Rate Curve",          self.fair_rate_curve_plot(curve_builder)),
             ("DV01 Bucket Ladder",           self.dv01_ladder_plot(portfolio_risk)),
             ("Portfolio KRD Heatmap",        self.portfolio_heatmap(portfolio_risk)),
+            ("P&L Attribution",              self.pnl_attribution_plot(portfolio_risk)),
             ("Carry & Roll Attribution",     self.carry_roll_plot(instruments)),
         ]
 
@@ -750,13 +951,15 @@ class Graphify:
 
         def _panel(title: str, fig: go.Figure) -> str:
             tag = {
-                "ZARONIA Yield Curve":   "Bootstrapped OIS",
-                "DV01 Bucket Ladder":    "KRD per bp",
-                "Portfolio KRD Heatmap": "Trade × Tenor",
-                "IR Delta Ladder":       "01 Grid",
-                "Scenario P&L":          "Stress P&L",
+                "ZARONIA Yield Curve":      "Bootstrapped OIS",
+                "OIS Fair-Rate Curve":      "Par Swap vs Quotes",
+                "DV01 Bucket Ladder":       "KRD per bp",
+                "Portfolio KRD Heatmap":    "Trade × Tenor",
+                "P&L Attribution":          "NPV & BPV",
+                "IR Delta Ladder":          "01 Grid",
+                "Scenario P&L":             "Stress P&L",
                 "Carry & Roll Attribution": "3M Horizon",
-                "Curve Scenarios":       "Parallel / Twist",
+                "Curve Scenarios":          "Parallel / Twist",
             }.get(title, "Analytics")
             html = fig.to_html(full_html=False, include_plotlyjs=False)
             return (

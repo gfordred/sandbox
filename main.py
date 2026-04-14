@@ -309,13 +309,15 @@ def step_charts(
     g = Graphify(output_dir=output_dir)
 
     charts = {
-        "yield_curve":     g.yield_curve_plot(cb),
-        "dv01_ladder":     g.dv01_ladder_plot(port_risk),
-        "krd_heatmap":     g.portfolio_heatmap(port_risk),
+        "yield_curve":        g.yield_curve_plot(cb),
+        "fair_rate_curve":    g.fair_rate_curve_plot(cb),
+        "dv01_ladder":        g.dv01_ladder_plot(port_risk),
+        "krd_heatmap":        g.portfolio_heatmap(port_risk),
+        "pnl_attribution":    g.pnl_attribution_plot(port_risk),
         "hedge_effect_macro": g.hedge_effectiveness_plot(macro_plan, "Macro Hedge Effectiveness"),
         "hedge_effect_krd":   g.hedge_effectiveness_plot(krd_plan,   "Key-Rate Hedge Effectiveness"),
-        "delta_ladder":    g.delta_ladder_plot(ladder),
-        "carry_roll":      g.carry_roll_plot(trades),
+        "delta_ladder":       g.delta_ladder_plot(ladder),
+        "carry_roll":         g.carry_roll_plot(trades),
     }
 
     # Scenario overlay
