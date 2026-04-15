@@ -12,7 +12,7 @@
 
 ## Implementation
 
-`carry_and_roll(horizon_months=3)` is defined on both `ZARVanillaIRS` and `ZARONIAOISSwap`. It:
+`carry_and_roll(horizon_months=3)` is defined on **`ZARVanillaIRS` only**. It:
 
 1. Prices the instrument today: `npv_t0`.
 2. Advances QuantLib's valuation date by `horizon_months`.
@@ -24,7 +24,11 @@ The carry and roll components are estimated separately:
 - `carry_ZAR = carry_bps × notional / 10000 × horizon`
 - `roll_ZAR = carry_roll_ZAR − carry_ZAR`
 
+Both `step_carry_roll()` in `main.py` and `carry_roll_plot()` in `Graphify` guard with `hasattr(inst, "carry_and_roll")` — OIS trades are **silently excluded**, not returning zero.
+
 ## April 2026 book (3M horizon, static curve)
+
+IRS trades only — OIS swaps excluded (no `carry_and_roll` method).
 
 | Trade | Carry ZAR | Roll ZAR | Total ZAR |
 |-------|-----------|----------|-----------|
@@ -33,11 +37,9 @@ The carry and roll components are estimated separately:
 | IRS-003-2Y-RCV | −1.7m | +1.5m | −0.3m |
 | IRS-004-7Y-RCV | +3.5m | +5.8m | +9.2m |
 
-OIS swaps (001, 006) return 0 in the current implementation — `carry_and_roll` is not wired for OIS instruments.
-
 ## See also
 
 - [[modules/vanilla_irs]] — implements `carry_and_roll()`
-- [[modules/ois_swap]] — partially implements `carry_and_roll()`
+- [[modules/ois_swap]] — does **not** implement `carry_and_roll()`
 - [[modules/graphify]] — `carry_roll_plot()` visualises this
 - [[concepts/scenario_analysis]] — carry is a static-curve scenario

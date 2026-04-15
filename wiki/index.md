@@ -1,6 +1,6 @@
 # Wiki Index
 
-_15 pages · last updated 2026-04-14_
+_15 pages · last updated 2026-04-15_
 
 ---
 
@@ -17,7 +17,7 @@ _15 pages · last updated 2026-04-14_
 | [[modules/zaronia_curve]] | OIS curve bootstrap — `ZARCurveBuilder`, market data, shocks, accessors |
 | [[modules/risk_engine]] | DV01, KRD, convexity, scenario P&L, delta ladder — `RiskEngine` |
 | [[modules/hedge_optimizer]] | Macro and key-rate hedge solver — `HedgeOptimizer`, `HedgePlan` |
-| [[modules/ois_swap]] | ZARONIA OIS swap pricer — `ZARONIAOISSwap`, `make_ois_swap()` |
+| [[modules/ois_swap]] | ZARONIA OIS swap pricer — `ZARONIAOISSwap`, `make_ois_swap()`; no carry/roll |
 | [[modules/vanilla_irs]] | Fixed/float vanilla IRS pricer — `ZARVanillaIRS`, `make_irs()` |
 | [[modules/graphify]] | 12-chart Plotly factory + HTML dashboard — `Graphify` |
 

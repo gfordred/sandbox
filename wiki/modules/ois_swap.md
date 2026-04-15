@@ -1,6 +1,6 @@
 # Module: ois_swap
 
-> Prices ZARONIA overnight index swaps using QuantLib's OIS swap helper; exposes NPV, BPV, DV01, and carry/roll.
+> Prices ZARONIA overnight index swaps using QuantLib's OIS swap helper; exposes NPV, BPV, DV01, fair rate, and cash flow tables. No carry/roll — see [[concepts/carry_roll]].
 
 **File:** `src/instruments/ois_swap.py` (253 lines)
 
@@ -42,7 +42,12 @@ Key properties:
 - `npv` — mark-to-market in ZAR (signed by direction)
 - `bpv` — signed BPV (ZAR/bp)
 - `dv01` — |BPV|
-- `carry_and_roll(horizon_months)` — see [[concepts/carry_roll]]
+- `fair_rate` — implied par OIS rate at current curve
+- `modified_duration` — annualised rate sensitivity
+- `cashflow_table()` — DataFrame of fixed and ZARONIA floating leg cash flows
+- `summary()` — dict of key trade metrics
+
+**No `carry_and_roll()`** — this method is only on `ZARVanillaIRS`. OIS trades are silently skipped in carry/roll attribution. See [[concepts/carry_roll]].
 
 ### `make_ois_swap()`
 
