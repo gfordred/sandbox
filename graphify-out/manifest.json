@@ -1,0 +1,17 @@
+{
+  "main.py": 1776226123.5441458,
+  "src\\__init__.py": 1776226123.5461574,
+  "src\\charts\\graphify.py": 1776226123.549834,
+  "src\\charts\\__init__.py": 1776226123.5483215,
+  "src\\curves\\zaronia_curve.py": 1776226123.549834,
+  "src\\curves\\__init__.py": 1776226123.549834,
+  "src\\hedging\\hedge_optimizer.py": 1776226123.549834,
+  "src\\hedging\\__init__.py": 1776226123.549834,
+  "src\\instruments\\ois_swap.py": 1776226123.549834,
+  "src\\instruments\\vanilla_irs.py": 1776226123.549834,
+  "src\\instruments\\__init__.py": 1776226123.549834,
+  "src\\risk\\risk_engine.py": 1776226123.5640314,
+  "src\\risk\\__init__.py": 1776226123.549834,
+  "CLAUDE.md": 1776227530.9051678,
+  "requirements.txt": 1776226123.5441458
+}
