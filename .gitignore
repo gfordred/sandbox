@@ -7,3 +7,5 @@ charts_output/
 dist/
 build/
 .env
+.venv/
+.streamlit/secrets.toml
